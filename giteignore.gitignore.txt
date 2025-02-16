@@ -1,0 +1,62 @@
+# Julia specific
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+/deps/deps.jl
+/docs/build/
+Manifest.toml
+
+# Data files
+*.csv
+*.xlsx
+*.xls
+*.xlsm
+*.txt
+*.dat
+*.db
+*.sqlite
+*.sqlite3
+
+# Documents
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xps
+*.odt
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.svg
+
+# Compressed files
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
