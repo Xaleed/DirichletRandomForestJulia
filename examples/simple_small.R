@@ -206,7 +206,7 @@ summarize_results <- function(results) {
 ###############
 compare_models <- function(X_train, Y_train, X_test, Y_test) {
   results <- list()
- 
+  
   # 2. Compositional Linear Log-ratio Model
   tryCatch({
     # Transform data using centered log-ratio (CLR)
@@ -269,57 +269,7 @@ compare_models <- function(X_train, Y_train, X_test, Y_test) {
     warning("Error in ILR Random Forest: ", e$message)
     results$ilr_rf <- NULL
   })
-  # Fixed Dirichlet Regression section
-  tryCatch({
-    # Ensure proper column names for Y_train
-    Y_train_dr <- as.data.frame(Y_train)
-    colnames(Y_train_dr) <- paste0("Y", 1:ncol(Y_train))
-    
-    # Ensure proper column names for X_train
-    X_train_df1 <- as.data.frame(X_train)
-    if (is.null(colnames(X_train))) {
-      colnames(X_train_df1) <- paste0("X", 1:ncol(X_train))
-    }
-    
-    # Create DR_data object
-    Y_comp_train <- DirichletReg::DR_data(Y_train_dr)
-    
-    # Combine into training dataset
-    training_data <- cbind(X_train_df1, Y_comp = Y_comp_train)
-    
-    # Create formula string using only the actual X variables
-    x_vars <- colnames(X_train_df1)
-    formula_str <- paste("Y_comp ~", paste(x_vars, collapse = " + "))
-    
-    # Fit model
-    dr_model <- DirichletReg::DirichReg(
-      formula = as.formula(formula_str),
-      data = training_data,
-      model = "alternative",
-      verbosity = 0
-    )
-    
-    # Prepare test data
-    X_test_df1 <- as.data.frame(X_test)
-    colnames(X_test_df1) <- colnames(X_train_df1)
-    
-    # Make predictions
-    train_pred_dr <- predict(dr_model, newdata = X_train_df1)
-    test_pred_dr <- predict(dr_model, newdata = X_test_df1)
-    
-    # Store results
-    results$dirichlet_reg <- list(
-      train = evaluate_performance(Y_train, as.matrix(train_pred_dr)),
-      test = evaluate_performance(Y_test, as.matrix(test_pred_dr)),
-      model = dr_model,
-      coefficients = coef(dr_model)
-    )
-    
-  }, error = function(e) {
-    warning("Error in Dirichlet Regression: ", e$message)
-    print(e)
-    results$dirichlet_reg <- NULL
-  })
+  
   
   return(results)
 }
@@ -328,4 +278,327 @@ compare_models <- function(X_train, Y_train, X_test, Y_test) {
 # First generate simulation data as you provided...
 # Then run:
 model_results <- compare_models(X_train, Y_train, X_test, Y_test)
+summary <- summarize_results(model_results)
+#################
+fit_dirichlet_regression <- function(X_train, Y_train, X_test, Y_test, model_type = "alternative") {
+  # Create combined training dataframe
+  train_df <- as.data.frame(cbind(Y_train, X_train))
+  
+  # Name columns
+  colnames(train_df) <- c(paste0("Y", 1:ncol(Y_train)), 
+                          paste0("X", 1:ncol(X_train)))
+  
+  # Create DR_data from just the Y columns
+  y_cols <- paste0("Y", 1:ncol(Y_train))
+  train_df$Y_comp <- DR_data(train_df[, y_cols])
+  
+  # Create formula
+  x_vars <- paste(paste0("X", 1:ncol(X_train)), collapse = " + ")
+  formula_str <- paste("Y_comp ~", x_vars)
+  
+  # Fit model
+  dr_model <- DirichReg(
+    formula = as.formula(formula_str),
+    data = train_df,
+    model = model_type,
+    verbosity = 0
+  )
+  
+  # Prepare test data
+  test_df <- as.data.frame(cbind(Y_test, X_test))
+  colnames(test_df) <- c(paste0("Y", 1:ncol(Y_test)), 
+                         paste0("X", 1:ncol(X_test)))
+  test_df$Y_comp <- DR_data(test_df[, y_cols])
+  
+  # Make predictions
+  train_pred <- predict(dr_model, newdata = train_df)
+  test_pred <- predict(dr_model, newdata = test_df)
+  
+  return(list(
+    model = dr_model,
+    predictions = list(
+      train = train_pred,
+      test = test_pred
+    )
+  ))
+}
+# Fit the model
+dr_results <- fit_dirichlet_regression(X_train, Y_train, X_test, Y_test)
+
+# You can access the predictions like this:
+head(dr_results$predictions$train)
+head(dr_results$predictions$test)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+compare_models <- function(X_train, Y_train, X_test, Y_test) {
+  results <- list()
+  
+  # 1. Dirichlet Regression
+  tryCatch({
+    dr_results <- fit_dirichlet_regression(X_train, Y_train, X_test, Y_test)
+    
+    # Evaluate performance
+    results$dirichlet_regression <- list(
+      train = evaluate_performance(as.data.frame(Y_train), 
+                                   as.data.frame(dr_results$predictions$train)),
+      test = evaluate_performance(as.data.frame(Y_test), 
+                                  as.data.frame(dr_results$predictions$test)),
+      model = dr_results$model
+    )
+  }, error = function(e) {
+    warning("Error in Dirichlet Regression: ", e$message)
+    results$dirichlet_regression <- NULL
+  })
+  
+  # 2. Compositional Linear Log-ratio Model (CLR + Random Forest)
+  tryCatch({
+    # Transform data using centered log-ratio (CLR)
+    Y_train_clr <- clr(as.matrix(Y_train))
+    Y_test_clr <- clr(as.matrix(Y_test))
+    
+    # Fit Random Forest models for each CLR-transformed component
+    rf_models <- lapply(1:ncol(Y_train_clr), function(i) {
+      randomForest(
+        x = X_train,
+        y = Y_train_clr[,i],
+        ntree = 500,
+        mtry = floor(sqrt(ncol(X_train))),
+        importance = TRUE
+      )
+    })
+    
+    # Make predictions and back-transform
+    rf_train_pred <- do.call(cbind, lapply(rf_models, function(mod) predict(mod, X_train)))
+    rf_test_pred <- do.call(cbind, lapply(rf_models, function(mod) predict(mod, X_test)))
+    
+    # Back-transform predictions to compositional space
+    train_pred_comp <- clrInv(rf_train_pred)
+    test_pred_comp <- clrInv(rf_test_pred)
+    
+    results$clr_rf <- list(
+      train = evaluate_performance(as.data.frame(Y_train), as.data.frame(train_pred_comp)),
+      test = evaluate_performance(as.data.frame(Y_test), as.data.frame(test_pred_comp)),
+      models = rf_models
+    )
+  }, error = function(e) {
+    warning("Error in CLR Random Forest Model: ", e$message)
+    results$clr_rf <- NULL
+  })
+  
+  # 3. Isometric Log-ratio Transform with Random Forest (ILR + Random Forest)
+  tryCatch({
+    # Transform data using ILR
+    Y_train_ilr <- ilr(as.matrix(Y_train))
+    Y_test_ilr <- ilr(as.matrix(Y_test))
+    
+    # Fit random forest on ILR-transformed data
+    ilr_models <- lapply(1:ncol(Y_train_ilr), function(i) {
+      randomForest(Y_train_ilr[,i] ~ ., data = as.data.frame(X_train))
+    })
+    
+    # Make predictions and back-transform
+    ilr_train_pred <- do.call(cbind, lapply(ilr_models, function(mod) predict(mod, as.data.frame(X_train))))
+    ilr_test_pred <- do.call(cbind, lapply(ilr_models, function(mod) predict(mod, as.data.frame(X_test))))
+    
+    # Back-transform predictions to compositional space
+    train_pred_comp_ilr <- ilrInv(ilr_train_pred)
+    test_pred_comp_ilr <- ilrInv(ilr_test_pred)
+    
+    results$ilr_rf <- list(
+      train = evaluate_performance(as.data.frame(Y_train), as.data.frame(train_pred_comp_ilr)),
+      test = evaluate_performance(as.data.frame(Y_test), as.data.frame(test_pred_comp_ilr))
+    )
+  }, error = function(e) {
+    warning("Error in ILR Random Forest: ", e$message)
+    results$ilr_rf <- NULL
+  })
+  
+  return(results)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Generate simulation data
+set.seed(48)
+n_samples <- 500
+n_features <- 10
+n_categories <- 3
+X <- matrix(runif(n_samples * n_features), n_samples, n_features)
+colnames(X) <- paste0("X", 1:n_features)
+alpha <- matrix(0, nrow = n_samples, ncol = n_categories)
+alpha[, 1] <- pmax(1, exp(X[, 1]))
+alpha[, 2] <- pmax(1, 3 * exp(X[, 3]))
+alpha[, 3] <- pmax(1, 2 + X[, 3] * exp(-X[, 2]))
+Y <- t(apply(alpha, 1, function(a) as.numeric(rdirichlet(1, a))))
+
+# Split data into train and test sets
+n_train <- floor(0.80 * n_samples)
+indices <- sample(1:n_samples, n_samples)
+train_indices <- indices[1:n_train]
+test_indices <- indices[(n_train + 1):n_samples]
+X_train <- X[train_indices, ]
+Y_train <- Y[train_indices, ]
+X_test <- X[test_indices, ]
+Y_test <- Y[test_indices, ]
+
+# Compare models
+model_results <- compare_models(X_train, Y_train, X_test, Y_test)
+
+# Summarize results
+summary <- summarize_results(model_results)
+print(summary)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+summarize_results <- function(results) {
+  # Create summary dataframe
+  metrics <- c("aitchison_distance", "compositional_r2", "mean_rmse")
+  summary_df <- data.frame(
+    Model = character(),
+    Metric = character(),
+    Train = numeric(),
+    Test = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  models <- names(results)
+  for (model in models) {
+    if (!is.null(results[[model]])) {  # Only include successful models
+      for (metric in metrics) {
+        summary_df <- rbind(summary_df, data.frame(
+          Model = model,
+          Metric = metric,
+          Train = if(metric == "mean_rmse") results[[model]]$train$mean_rmse else results[[model]]$train[[metric]],
+          Test = if(metric == "mean_rmse") results[[model]]$test$mean_rmse else results[[model]]$test[[metric]]
+        ))
+      }
+    }
+  }
+  
+  # Print formatted summary
+  cat("\nModel Comparison Results:\n")
+  cat("=======================\n\n")
+  
+  for (model in unique(summary_df$Model)) {
+    cat(sprintf("\n%s:\n", gsub("_", " ", toupper(model))))
+    model_results <- summary_df[summary_df$Model == model,]
+    for (i in 1:nrow(model_results)) {
+      cat(sprintf("%s:\n", gsub("_", " ", model_results$Metric[i])))
+      cat(sprintf("  Train: %.4f\n", model_results$Train[i]))
+      cat(sprintf("  Test:  %.4f\n", model_results$Test[i]))
+    }
+    cat("\n")
+  }
+  
+  # Create visualizations
+  if (nrow(summary_df) > 0) {
+    library(ggplot2)
+    library(gridExtra)
+    
+    # Reshape data for plotting
+    plot_data <- reshape2::melt(summary_df, id.vars = c("Model", "Metric"))
+    plot_data$Metric <- gsub("_", " ", plot_data$Metric)
+    
+    # Plot 1: Bar plot for metrics
+    p1 <- ggplot(plot_data, aes(x = Model, y = value, fill = variable)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      facet_wrap(~Metric, scales = "free_y") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      labs(x = "Model", y = "Value", fill = "Dataset") +
+      scale_fill_brewer(palette = "Set1") +
+      ggtitle("Model Performance Comparison")
+    
+    # Plot 2: Line plot for train vs. test performance
+    p2 <- ggplot(plot_data, aes(x = Metric, y = value, color = Model, group = Model)) +
+      geom_line(size = 1) +
+      geom_point(size = 3) +
+      facet_wrap(~variable, scales = "free_y") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      labs(x = "Metric", y = "Value", color = "Model") +
+      ggtitle("Train vs. Test Performance")
+    
+    # Plot 3: Heatmap of performance metrics
+    p3 <- ggplot(plot_data, aes(x = Model, y = Metric, fill = value)) +
+      geom_tile() +
+      facet_wrap(~variable, scales = "free") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      scale_fill_gradient(low = "white", high = "steelblue") +
+      labs(x = "Model", y = "Metric", fill = "Value") +
+      ggtitle("Performance Heatmap")
+    
+    # Combine plots
+    grid.arrange(p1, p2, p3, ncol = 1)
+  }
+  
+  return(summary_df)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Compare models
+model_results <- compare_models(X_train, Y_train, X_test, Y_test)
+
+# Summarize and plot results
 summary <- summarize_results(model_results)
