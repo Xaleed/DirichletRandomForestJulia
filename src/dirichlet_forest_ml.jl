@@ -1,11 +1,10 @@
-# Main implementation of Dirichlet Random Forest
+# dirichlet_forest.jl
 using Distributions
 using Random
 using Statistics
 using DataFrames
 using SpecialFunctions
-include("MLE_vs_MoM.jl")
-
+include("MLE_vs_MoM.JL")
 # Dirichlet Node Structure
 mutable struct DirichletNode
     split_var::Union{Nothing,Int}
@@ -32,6 +31,13 @@ end
 DirichletNode() = DirichletNode(nothing, nothing, nothing, nothing, false, nothing, 0.0)
 DirichletForest(n_trees::Int=100) = DirichletForest(Vector{DirichletNode}(), nothing, nothing, nothing, nothing, nothing, n_trees)
 
+# Utility functions
+function dirichlet_loglik(y::Vector{Float64}, alpha::Vector{Float64})
+    loglik = loggamma(sum(alpha)) - sum(loggamma.(alpha)) + sum((alpha .- 1) .* log.(y))
+    return loglik
+end
+
+
 # Add optimization_method parameter to grow_dirichlet_tree
 function grow_dirichlet_tree(X::Matrix{Float64}, Y::Matrix{Float64},
     q_threshold::Int,
@@ -44,10 +50,14 @@ function grow_dirichlet_tree(X::Matrix{Float64}, Y::Matrix{Float64},
 
     function grow_node(node_samples::Vector{Int}, depth::Int=0)
         node = DirichletNode()
-
+        function compute_mean_samples(samples::Vector{Int})
+            # Calculate mean of Y values for samples in the node
+            return mean(Y[samples, :], dims=1)
+        end
         if depth >= max_depth || length(node_samples) < min_node_size * 2
             node.terminal = true
-            node.predictions = optimization_method(Y[node_samples, :])
+            #node.predictions = optimization_method(Y[node_samples, :])
+            node.predictions =  vec(mean(Y[node_samples, :], dims=1))
             return node
         end
 
@@ -56,7 +66,8 @@ function grow_dirichlet_tree(X::Matrix{Float64}, Y::Matrix{Float64},
 
         if isnothing(split)
             node.terminal = true
-            node.predictions = optimization_method(Y[node_samples, :])
+            #node.predictions = optimization_method(Y[node_samples, :])
+            node.predictions =  vec(mean(Y[node_samples, :], dims=1))
             return node
         end
 
@@ -131,7 +142,8 @@ function find_best_split_dirichlet(X::Matrix{Float64}, Y::Matrix{Float64},
             end
         end
     end
-    
+    #isfinite(best_decrease)
+    #best_decrease > 0
     return best_decrease > 0 ? (var_id=best_var, value=best_value, decrease=best_decrease) : nothing
 end
 
@@ -171,6 +183,7 @@ function fit_dirichlet_forest!(forest::DirichletForest, X::Matrix{Float64}, Y::M
 
     return forest
 end
+
 
 function predict_dirichlet_tree(tree::DirichletNode, X::Matrix{Float64})
     function predict_sample(node::DirichletNode, x::Vector{Float64})
@@ -214,3 +227,29 @@ function predict_dirichlet_forest(forest::DirichletForest, X::Matrix{Float64})
     avg_preds ./= sum(avg_preds, dims=2)
     return avg_preds
 end
+
+# Evaluation metrics
+function aitchison_distance(y_true::Matrix{Float64}, y_pred::Matrix{Float64})
+    n_samples = size(y_true, 1)
+    distances = zeros(n_samples)
+
+    for i in 1:n_samples
+        clr_true = log.(y_true[i, :]) .- mean(log.(y_true[i, :]))
+        clr_pred = log.(y_pred[i, :]) .- mean(log.(y_pred[i, :]))
+        distances[i] = sqrt(sum((clr_true .- clr_pred) .^ 2))
+    end
+
+    return mean(distances)
+end
+
+function compositional_r2(y_true::Matrix{Float64}, y_pred::Matrix{Float64})
+    clr_true = log.(y_true) .- mean(log.(y_true), dims=2)
+    clr_pred = log.(y_pred) .- mean(log.(y_pred), dims=2)
+
+    total_var = sum((clr_true .- mean(clr_true, dims=1)) .^ 2)
+    residual_var = sum((clr_true .- clr_pred) .^ 2)
+
+    return 1 - residual_var / total_var
+end
+
+

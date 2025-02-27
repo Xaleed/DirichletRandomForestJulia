@@ -16,24 +16,31 @@ Pkg.add("DirichletRandomForest")
 ```
 DirichletRandomForest/
 ├── src/
-│   ├── DirichletRandomForest.jl    # Main module file
-│   ├── MLE_vs_MoM.jl              # Parameter estimation methods
-│   ├── dirichlet_forest.jl         # Main implementation
-│   └── evaluation.jl               # Evaluation metrics
-│
+│   ├── julia/
+│   │   ├── DirichletRandomForest.jl       # Main module
+│   │   ├── dirichlet_forest.jl           # Core algorithm
+│   │   ├── parameter_estimation.jl       # MLE/MoM implementations
+│   │   └── r_interface.jl                # Julia functions called from R
+│   │
+│   └── r/
+│       ├── model_comparison.R            # compare_models function
+│       ├── model_utils.R                 # Evaluation metrics
+│       └── dirichlet_regression.R        # Dirichlet regression helpers
+├── examples/
+│   ├── real_data_analysis.R              # Cleaned version of example_real_data.R
+│   └── simulation_study.R                # Cleaned version of example_simple_structure.R
 ├── test/
-│   ├── runtests.jl                 # Main test file
-│   ├── test_mle_mom.jl             # Tests for parameter estimation
-│   ├── test_forest.jl              # Tests for main implementation
-│   └── test_evaluation.jl          # Tests for evaluation metrics
-│
+│   ├── julia/
+│   │   └── test_core.jl                  # Unit tests for Julia
+│   └── r/
+│       └── test_models.R                 # Model comparison tests
 ├── docs/
-│   ├── src/                        # Documentation source files
-│   └── make.jl                     # Documentation generation script
-│
-├── Project.toml                    # Project dependencies and metadata
-├── README.md                       # This file
-└── LICENSE                         # License information
+│   ├── make.jl                           # Documentation builder
+│   └── src/                              # Documentation source files
+├── Project.toml                          # Julia dependencies
+├── DESCRIPTION                           # R package metadata
+├── NAMESPACE                             # R namespace
+└── README.md
 ```
 
 ## Dependencies
