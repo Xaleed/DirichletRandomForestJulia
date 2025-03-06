@@ -76,3 +76,4 @@ pred_train <- julia_eval('
 
 # Clean up workers when done
 julia_eval('cleanup_workers()')
+
