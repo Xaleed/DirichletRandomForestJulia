@@ -1,5 +1,3 @@
-
-
 #
 # Real-World case study for Dirichlet-random forest for compositional data
 #
@@ -237,8 +235,13 @@ julia_source("F:\\Stephan\\Research\\DirichletRF\\DirichletRandomForestJulia-mas
 
 #Load functions used in the modelling
 
+# geometric_mean = function(){exp(mean(log(x)))} #added with julia
+
+
 evaluate_performance = function(Y_true, Y_pred) {
   n_samples = nrow(Y_true)
+  Y_means = colMeans(Y_true)
+  
   
   aitchison_dist <- mean(sapply(1:n_samples, function(i) {
     y_true = as.numeric(Y_true[i,])
@@ -248,40 +251,39 @@ evaluate_performance = function(Y_true, Y_pred) {
     y_pred = pmax(y_pred, .Machine$double.eps)
     
     gm_true = geometric_mean(y_true)
-    gm_pred <- geometric_mean(y_pred)
+    gm_pred = geometric_mean(y_pred)
     
     sqrt(sum((log(y_true/gm_true) - log(y_pred/gm_pred))^2))
   }))
   
-  total_var = sum(sapply(1:n_samples, function(i) {
-    y_true = as.numeric(Y_true[i,])
-    y_true = pmax(y_true, .Machine$double.eps)
-    gm_true = geometric_mean(y_true)
-    sum(((y_true))^2)
-  }))
   
-  residual_var <- sum(sapply(1:n_samples, function(i) {
-    y_true = as.numeric(Y_true[i,])
-    y_pred = as.numeric(Y_pred[i,])
-    
-    y_true = pmax(y_true, .Machine$double.eps)
-    y_pred = pmax(y_pred, .Machine$double.eps)
-    
-    gm_true = geometric_mean(y_true)
-    gm_pred = geometric_mean(y_pred)
-    
-    sum(((y_true) - (y_pred))^2)
-  }))
+ # total_var = sum(sapply(1:n_samples, function(i) {
+#    y_true = as.numeric(Y_true[i,])
+#    y_true = pmax(y_true, .Machine$double.eps)
+#    sum((y_true-Y_means)^2)
+#  }))
   
-  comp_r2 = 1 - residual_var/total_var
+ # residual_var <- sum(sapply(1:n_samples, function(i) {
+#    y_true = as.numeric(Y_true[i,])
+#    y_pred = as.numeric(Y_pred[i,])
+#    
+#    y_true = pmax(y_true, .Machine$double.eps)
+#    y_pred = pmax(y_pred, .Machine$double.eps)
+#    
+#       sum((y_true - y_pred)^2)
+#  }))
+  
+ # comp_r2 = 1 - residual_var/total_var
+  
+  
   mse = colMeans((Y_true - Y_pred)^2)
   rmse = sqrt(mse)
   
   return(list(
     aitchison_distance = aitchison_dist,
-    MEC = comp_r2,
+  #  MEC = comp_r2,
     RMSE = rmse,
-    mean_rmse = sqrt(mean(mse))
+    mean_rmse = mean(rmse)
   ))
 }
 
@@ -498,7 +500,9 @@ perf_df = data.frame(RF_CLR=unlist(CLR_perf),
                      RF_ILR=unlist(ILR_perf),
                      RF=unlist(RF_perf),
                      DIR_RF=unlist(DIR_RF_perf),
-                     row.names=c("aitchison_distance", "MECcomp", paste0(Ynames, "RMSE"), "meanRMSE"))
+                     row.names=c("aitchison_distance",
+                                 #"MECcomp", 
+                                 paste0(Ynames, "RMSE"), "meanRMSE"))
 
 
 xtable(perf_df)
