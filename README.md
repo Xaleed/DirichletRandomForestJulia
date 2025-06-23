@@ -56,48 +56,6 @@ DirichletRandomForest/
 - SpecialFunctions.jl (2.1)
 - Statistics.jl
 
-## Usage
-
-```julia
-using DirichletRandomForest
-
-# Example code will go here
-```
-
-## Features
-
-- Implementation of Random Forests for Dirichlet distributions
-- Multiple parameter estimation methods (MLE and Method of Moments)
-- Comprehensive evaluation metrics
-
-## Testing
-
-To run the tests, execute:
-
-```julia
-using Pkg
-Pkg.test("DirichletRandomForest")
-```
-
-## Documentation
-
-Documentation is available at [link to documentation].
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the [LICENSE] - see the LICENSE file for details.
-
-## Citation
-
-If you use this package in your research, please cite:
-
-```
-Citation information will go here
-```
 
 ## Authors
 
