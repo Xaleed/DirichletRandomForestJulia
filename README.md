@@ -18,3 +18,6 @@ You can also use these Julia functions from within R. To get started, install Ju
 if (!require("JuliaCall")) install.packages("JuliaCall")
 library(JuliaCall)
 install_julia()
+```
+The main function for calling the Julia code from R is defined in the `dirichlet_forest_wrapper.jl` file located in the src folder.
+To see how to use it in practice, refer to the `example_usage_dirichlet_forest.R` file in the examples folder.
