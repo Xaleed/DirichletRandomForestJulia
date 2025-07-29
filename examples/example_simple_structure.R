@@ -1,3 +1,6 @@
+
+
+
 source("C:\\Users\\29827094\\Documents\\GitHub\\DirichletRandomForestJulia\\src\\comparision_models.R")
 
 
@@ -8,12 +11,13 @@ source("C:\\Users\\29827094\\Documents\\GitHub\\DirichletRandomForestJulia\\src\
 library(ggplot2)
 library(reshape2)
 
+
 # Function to create and manage directories
 
 
 # Function to simulate Dirichlet-distributed data
 simulate_data <- function(n_samples, n_features = 3, n_categories = 3, feature_ranges = list(
-  categorical = list(min = 1, max = 5),
+  categorical = list(min = 1, max = 15),
   continuous = list(min = 0, max = 1),
   seed
 )) {
@@ -73,13 +77,17 @@ run_iteration <- function(seed, n_samples = 500) {
   
   tryCatch({
     # Simulate data
-    sim_data <- simulate_data(n_samples, seed)
+    sim_data <- simulate_data(n_samples, n_features = 3, n_categories = 3, feature_ranges = list(
+      categorical = list(min = 1, max = 5),
+      continuous = list(min = 0, max = 1),
+      seed
+    ))
     
     # Split data
     split_datasets <- split_data(sim_data$X, sim_data$Y)
     
     # Run models comparison
-
+    
     results <- compare_models(
       split_datasets$X_train, 
       split_datasets$Y_train, 
@@ -266,14 +274,14 @@ run_iteration <- function(seed, n_samples = 500) {
  # Main function to run simulation
  run_simulation <- function(n_iterations = 40, 
                             n_samples = 500, 
-                            seed_multiplier = 48,
+                            seed_multiplier = 128,
                             base_dir = "simulation_results") {
    # Setup directories
    dirs <- setup_directories(base_dir)
    
    # Run iterations
    test_results <- lapply(1:n_iterations, function(i) {
-     result <- run_iteration(seed_multiplier * i, n_samples)
+     result <- run_iteration(seed_multiplier * (i+1), n_samples)
      if (nrow(result) == 0) {
        warning(paste("Iteration", i, "returned no results"))
      }
@@ -306,7 +314,7 @@ run_iteration <- function(seed, n_samples = 500) {
  }
  
  # Function to run simulations for multiple sample sizes
- run_multiple_simulations <- function(sample_sizes = c(100, 500, 1000), 
+ run_multiple_simulations <- function(sample_sizes = c(100,200), 
                                       n_iterations = 40,
                                       base_dir = "simulation_results") {
    results_list <- list()
@@ -316,6 +324,7 @@ run_iteration <- function(seed, n_samples = 500) {
      results_list[[as.character(n)]] <- run_simulation(
        n_iterations = n_iterations,
        n_samples = n,
+       seed_multiplier = 48,
        base_dir = base_dir
      )
    }
@@ -323,12 +332,17 @@ run_iteration <- function(seed, n_samples = 500) {
    return(results_list)
  }
  
+ #base_dir = "C:\\Users\\29827094\\Documents\\GitHub\\DirichletRandomForestJulia\\Results_simple_structure\\"
+ #run_simulation(n_iterations = 40, n_samples = 500, seed_multiplier = 48,  base_dir)
+ 
  # Example usage:
   #Run simulations for different sample sizes
-sample_sizes <- c(100, 200, 500, 2000)
+sample_sizes <- c(100)
+seed = 132
 all_results <- run_multiple_simulations(
     sample_sizes = sample_sizes,
-    n_iterations = 40,
-    base_dir = "C:\\Users\\29827094\\Documents\GitHub\\DirichletRandomForestJulia\\Results_simple_structure\\"
+    n_iterations = 5,
+    base_dir = "C:\\Users\\29827094\\Documents\\GitHub\\DirichletRandomForestJulia\\Results_simple_structure\\"
+    
 )
  

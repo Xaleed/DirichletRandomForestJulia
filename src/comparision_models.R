@@ -46,12 +46,11 @@ evaluate_performance <- function(Y_true, Y_pred) {
     
     sqrt(sum((log(y_true/gm_true) - log(y_pred/gm_pred))^2))
   }))
-  
+  col_means_true <- colMeans(Y_true)
   total_var <- sum(sapply(1:n_samples, function(i) {
     y_true <- as.numeric(Y_true[i,])
     y_true <- pmax(y_true, .Machine$double.eps)
-    gm_true <- geometric_mean(y_true)
-    sum(((y_true))^2)
+    sum((y_true-col_means_true)^2)
   }))
   
   residual_var <- sum(sapply(1:n_samples, function(i) {
