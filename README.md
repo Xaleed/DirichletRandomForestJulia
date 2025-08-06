@@ -52,7 +52,9 @@ if (!require("JuliaCall")) install.packages("JuliaCall")
 library(JuliaCall)
 install_julia()
 ```
-The main function for calling the Julia code from R is defined in the `dirichlet_forest_wrapper.R` file located in the src folder.
+You can see an example in the examples folder: `call_to_R.R`.
+
+This part is not yet complete: The main function for calling the Julia code from R is defined in the `dirichlet_forest_wrapper.R` file located in the src folder.
 To see how to use it in practice, refer to the `example_usage_dirichlet_forest.R` file in the examples folder.
 
 ## Code Related to the Paper: *Dirichlet Random Forest for Predicting Compositional Data*
