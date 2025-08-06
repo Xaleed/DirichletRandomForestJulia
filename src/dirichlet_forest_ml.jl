@@ -89,7 +89,7 @@ end
 
 # Add optimization_method parameter to grow_dirichlet_tree
 function grow_dirichlet_tree(X::Matrix{Float64}, Y::Matrix{Float64},
-    q_threshold::500000000,
+    q_threshold::Int,
     max_depth::Int=10,
     min_node_size::Int=5,
     mtry::Union{Nothing,Int}=nothing,
@@ -141,7 +141,7 @@ end
 
 # Modified find_best_split_dirichlet to use optimization_method
 function find_best_split_dirichlet(X::Matrix{Float64}, Y::Matrix{Float64},
-    q_threshold::500000000, node_samples::Vector{Int}, mtry::Union{Nothing,Int}=nothing,
+    q_threshold::Int, node_samples::Vector{Int}, mtry::Union{Nothing,Int}=nothing,
     optimization_method::Function=estimate_parameters_mom)
 
     mtry = isnothing(mtry) ? Int(round(size(X, 2) / 3)) : mtry
