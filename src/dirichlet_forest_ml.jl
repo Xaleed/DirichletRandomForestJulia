@@ -1,9 +1,58 @@
-# dirichlet_forest.jl
-using Distributions
+# Auto-install required packages - Add this to the TOP of your dirichlet_forest_ml.jl file
+# This should be the very first code before any 'using' statements
+
+using Pkg
+
+# Function to ensure packages are installed
+function ensure_package_installed(package_name::String)
+    try
+        eval(Meta.parse("using $package_name"))
+        return true
+    catch
+        println("Installing missing package: $package_name")
+        try
+            Pkg.add(package_name)
+            eval(Meta.parse("using $package_name"))
+            println("✓ Successfully installed: $package_name")
+            return true
+        catch e
+            println("✗ Failed to install $package_name: $e")
+            return false
+        end
+    end
+end
+
+# List of required packages
+required_packages = [
+    "Distributions",
+    "DataFrames", 
+     "Statistics",  # for mean, var
+ "LinearAlgebra",  # for norm
+ "SpecialFunctions"
+]
+
+# Install missing packages
+println("Checking Dirichlet Forest dependencies...")
+for pkg in required_packages
+    ensure_package_installed(pkg)
+end
+
+# Standard library packages (no installation needed)
 using Random
 using Statistics
+
+# Now load the packages that might have been installed
+using Distributions
 using DataFrames
-using SpecialFunctions
+
+
+
+println("✓ All dependencies loaded successfully!")
+
+# Your existing code continues below...
+# include("MLE_vs_MoM.JL")  # Your existing include
+
+# Rest of your existing dirichlet_forest_ml.jl code goes here...
 include("MLE_vs_MoM.JL")
 # Dirichlet Node Structure
 mutable struct DirichletNode
@@ -40,7 +89,7 @@ end
 
 # Add optimization_method parameter to grow_dirichlet_tree
 function grow_dirichlet_tree(X::Matrix{Float64}, Y::Matrix{Float64},
-    q_threshold::Int,
+    q_threshold::500000000,
     max_depth::Int=10,
     min_node_size::Int=5,
     mtry::Union{Nothing,Int}=nothing,
@@ -92,7 +141,7 @@ end
 
 # Modified find_best_split_dirichlet to use optimization_method
 function find_best_split_dirichlet(X::Matrix{Float64}, Y::Matrix{Float64},
-    q_threshold::Int, node_samples::Vector{Int}, mtry::Union{Nothing,Int}=nothing,
+    q_threshold::500000000, node_samples::Vector{Int}, mtry::Union{Nothing,Int}=nothing,
     optimization_method::Function=estimate_parameters_mom)
 
     mtry = isnothing(mtry) ? Int(round(size(X, 2) / 3)) : mtry
@@ -149,7 +198,7 @@ end
 
 # Modified fit_dirichlet_forest! to include optimization_method
 function fit_dirichlet_forest!(forest::DirichletForest, X::Matrix{Float64}, Y::Matrix{Float64},
-    q_threshold::Int, max_depth::Int=10, min_node_size::Int=5,
+    q_threshold::Int = 500000000, max_depth::Int=10, min_node_size::Int=5,
     mtry::Union{Nothing,Int}=nothing,
     optimization_method::Function=estimate_parameters_mom)
     forest.importance = zeros(size(X, 2))
