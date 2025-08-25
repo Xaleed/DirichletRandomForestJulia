@@ -24,8 +24,8 @@ julia_assign("x_train", X_train)
 julia_assign("y_train", Y_train)
 julia_assign("x_test", X_test)
 
-julia_main_file <- "C:\\Users\\Khaled\\Documents\\GitHub\\DirichletRandomForestJulia\\src\\dirichlet_forest_ml.jl"
-
+#julia_main_file <- "C:\\Users\\Khaled\\Documents\\GitHub\\DirichletRandomForestJulia\\src\\dirichlet_forest_ml.jl"
+julia_main_file <-"C:\\Users\\29827094\\Documents\\GitHub\\DirichletRandomForestJulia\\src\\dirichlet_forest_ml.jl"
 julia_source(julia_main_file)
 
 
