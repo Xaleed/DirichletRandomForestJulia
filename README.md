@@ -42,6 +42,11 @@ This adjustment is particularly useful when dealing with **high-cardinality cont
 ## Example in Julia
 
 To see an example of how to use `Dirichlet_RF` in Julia, refer to the `Dirichlet_RF_Example.jl` file located in the `examples` directory.
+If you want to run the code in a distributed manner, check: `examples/Dirichlet_RF_Example_distributed.jl`.
+By default, the script adds worker processes with: `addprocs(Sys.CPU_THREADS - 1)`. 
+Here, `Sys.CPU_THREADS detects` the total number of CPU threads on your system.
+
+For example, if your system has 10 threads and you want to use only 5, change: `addprocs(Sys.CPU_THREADS - 1)` to: `addprocs(Sys.CPU_THREADS - 5)`. This lets you control how many CPU threads are allocated for parallel execution.
 
 ## Using from R
 
