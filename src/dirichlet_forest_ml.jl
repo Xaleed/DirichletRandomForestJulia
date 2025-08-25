@@ -300,5 +300,12 @@ function compositional_r2(y_true::Matrix{Float64}, y_pred::Matrix{Float64})
 
     return 1 - residual_var / total_var
 end
-
+function process_matrix_data(x_train, y_train, x_test)
+    # Convert to expected type
+    x_train = convert(Matrix{Float64}, x_train)
+    y_train = convert(Matrix{Float64}, y_train)
+    x_test = convert(Matrix{Float64}, x_test)
+    
+    return x_train, y_train, x_test
+end
 

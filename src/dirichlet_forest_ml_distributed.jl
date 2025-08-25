@@ -1,5 +1,43 @@
+# Auto-install required packages - Add this to the TOP of your dirichlet_forest_ml_distributed.jl file
+using Pkg
+
+# Function to ensure packages are installed
+function ensure_package_installed(package_name::String)
+    try
+        eval(Meta.parse("using $package_name"))
+        return true
+    catch
+        println("Installing missing package: $package_name")
+        try
+            Pkg.add(package_name)
+            eval(Meta.parse("using $package_name"))
+            println("✅ Successfully installed: $package_name")
+            return true
+        catch e
+            println("❌ Failed to install $package_name: $e")
+            return false
+        end
+    end
+end
+
+# List of required packages
+required_packages = [
+    "Distributions",
+    "DataFrames", 
+    "Statistics",  # for mean, var
+    "LinearAlgebra",  # for norm
+    "SpecialFunctions",
+    "Distributed"
+]
+
+# Install missing packages
+println("Checking Dirichlet Forest dependencies...")
+for pkg in required_packages
+    ensure_package_installed(pkg)
+end
+
 using Distributed
-addprocs(Sys.CPU_THREADS - 1)
+addprocs(Sys.CPU_THREADS - 1)  # Add worker processes
 
 @everywhere begin
     using Distributions
@@ -7,15 +45,12 @@ addprocs(Sys.CPU_THREADS - 1)
     using Statistics
     using DataFrames
     using SpecialFunctions
-    using BenchmarkTools
+    using LinearAlgebra
+    
+    # Include the MLE_vs_MoM module on all workers
     include("MLE_vs_MoM.JL")
 
-
-    # Utility Functions
-    function dirichlet_loglik(y::Vector{Float64}, alpha::Vector{Float64})
-        loglik = loggamma(sum(alpha)) - sum(loggamma.(alpha)) + sum((alpha .- 1) .* log.(y))
-        return loglik
-    end
+    println("✅ All dependencies loaded successfully on worker!")
 
     # Dirichlet Node Structure
     mutable struct DirichletNode
@@ -39,13 +74,69 @@ addprocs(Sys.CPU_THREADS - 1)
         n_trees::Int
     end
 
-    # Constructors
+    # Constructor functions
     DirichletNode() = DirichletNode(nothing, nothing, nothing, nothing, false, nothing, 0.0)
     DirichletForest(n_trees::Int=100) = DirichletForest(Vector{DirichletNode}(), nothing, nothing, nothing, nothing, nothing, n_trees)
 
-   
+    # Utility functions
+    function dirichlet_loglik(y::Vector{Float64}, alpha::Vector{Float64})
+        loglik = loggamma(sum(alpha)) - sum(loggamma.(alpha)) + sum((alpha .- 1) .* log.(y))
+        return loglik
+    end
 
-        # Modified find_best_split_dirichlet to use optimization_method
+    # Add optimization_method parameter to grow_dirichlet_tree
+    function grow_dirichlet_tree(X::Matrix{Float64}, Y::Matrix{Float64},
+        q_threshold::Int,
+        max_depth::Int=10,
+        min_node_size::Int=5,
+        mtry::Union{Nothing,Int}=nothing,
+        optimization_method::Function=estimate_parameters_mom)
+        importance = zeros(size(X, 2))
+        importancef = zeros(size(X, 2))
+
+        function grow_node(node_samples::Vector{Int}, depth::Int=0)
+            node = DirichletNode()
+            function compute_mean_samples(samples::Vector{Int})
+                # Calculate mean of Y values for samples in the node
+                return mean(Y[samples, :], dims=1)
+            end
+            if depth >= max_depth || length(node_samples) < min_node_size * 2
+                node.terminal = true
+                #node.predictions = optimization_method(Y[node_samples, :])
+                node.predictions = vec(mean(Y[node_samples, :], dims=1))
+                return node
+            end
+
+            # Modified find_best_split_dirichlet to use optimization_method
+            split = find_best_split_dirichlet(X, Y, q_threshold, node_samples, mtry, optimization_method)
+
+            if isnothing(split)
+                node.terminal = true
+                #node.predictions = optimization_method(Y[node_samples, :])
+                node.predictions = vec(mean(Y[node_samples, :], dims=1))
+                return node
+            end
+
+            node.split_var = split.var_id
+            node.split_value = split.value
+            node.improvement = split.decrease
+            importance[split.var_id] += split.decrease
+            importancef[split.var_id] += 1
+
+            left_samples = node_samples[X[node_samples, split.var_id].<=split.value]
+            right_samples = node_samples[X[node_samples, split.var_id].>split.value]
+
+            node.left_child = grow_node(left_samples, depth + 1)
+            node.right_child = grow_node(right_samples, depth + 1)
+
+            return node
+        end
+
+        root = grow_node(collect(1:size(X, 1)))
+        return (tree=root, importance=importance, importancef=importancef)
+    end
+
+    # Modified find_best_split_dirichlet to use optimization_method
     function find_best_split_dirichlet(X::Matrix{Float64}, Y::Matrix{Float64},
         q_threshold::Int, node_samples::Vector{Int}, mtry::Union{Nothing,Int}=nothing,
         optimization_method::Function=estimate_parameters_mom)
@@ -101,74 +192,50 @@ addprocs(Sys.CPU_THREADS - 1)
         #best_decrease > 0
         return best_decrease > 0 ? (var_id=best_var, value=best_value, decrease=best_decrease) : nothing
     end
-    function grow_dirichlet_tree(X::Matrix{Float64}, Y::Matrix{Float64},
-        q_threshold::Int,
-        max_depth::Int=10,
-        min_node_size::Int=5,
-        mtry::Union{Nothing,Int}=nothing,
-        optimization_method::Function=estimate_parameters_mom)
-        importance = zeros(size(X, 2))
-        importancef = zeros(size(X, 2))
-    
-        function grow_node(node_samples::Vector{Int}, depth::Int=0)
-            node = DirichletNode()
-            function compute_mean_samples(samples::Vector{Int})
-                # Calculate mean of Y values for samples in the node
-                return mean(Y[samples, :], dims=1)
+
+    function predict_dirichlet_tree(tree::DirichletNode, X::Matrix{Float64})
+        function predict_sample(node::DirichletNode, x::Vector{Float64})
+            if node.terminal
+                return node.predictions
             end
-            if depth >= max_depth || length(node_samples) < min_node_size * 2
-                node.terminal = true
-                #node.predictions = optimization_method(Y[node_samples, :])
-                node.predictions =  vec(mean(Y[node_samples, :], dims=1))
-                return node
+
+            if x[node.split_var] <= node.split_value
+                return predict_sample(node.left_child, x)
+            else
+                return predict_sample(node.right_child, x)
             end
-    
-            # Modified find_best_split_dirichlet to use optimization_method
-            split = find_best_split_dirichlet(X, Y, q_threshold, node_samples, mtry, optimization_method)
-    
-            if isnothing(split)
-                node.terminal = true
-                #node.predictions = optimization_method(Y[node_samples, :])
-                node.predictions =  vec(mean(Y[node_samples, :], dims=1))
-                return node
-            end
-    
-            node.split_var = split.var_id
-            node.split_value = split.value
-            node.improvement = split.decrease
-            importance[split.var_id] += split.decrease
-            importancef[split.var_id] += 1
-    
-            left_samples = node_samples[X[node_samples, split.var_id].<=split.value]
-            right_samples = node_samples[X[node_samples, split.var_id].>split.value]
-    
-            node.left_child = grow_node(left_samples, depth + 1)
-            node.right_child = grow_node(right_samples, depth + 1)
-    
-            return node
         end
-    
-        root = grow_node(collect(1:size(X, 1)))
-        return (tree=root, importance=importance, importancef=importancef)
+
+        n_samples = size(X, 1)
+        n_categories = length(tree.terminal ? tree.predictions : predict_sample(tree, X[1, :]))
+        predictions = zeros(n_samples, n_categories)
+
+        for i in 1:n_samples
+            predictions[i, :] .= predict_sample(tree, X[i, :])
+        end
+
+        predictions ./= sum(predictions, dims=2)
+        return predictions
     end
 end
 
-
-# Parallel Forest Fitting Function
-function fit_dirichlet_forest_parallel!(forest::DirichletForest, X::Matrix{Float64}, Y::Matrix{Float64},
-    q_threshold::Int, max_depth::Int=10, min_node_size::Int=5,
+# Modified fit_dirichlet_forest! to include optimization_method and match non-parallel version
+function fit_dirichlet_forest!(forest::DirichletForest, X::Matrix{Float64}, Y::Matrix{Float64},
+    q_threshold::Int = 500000000, max_depth::Int=10, min_node_size::Int=5,
     mtry::Union{Nothing,Int}=nothing,
-    optimization_method::Function=estimate_parameters_mle_newton)
+    optimization_method::Function=estimate_parameters_mom)
     
     forest.importance = zeros(size(X, 2))
     forest.importancef = zeros(size(X, 2))
     forest.n_categories = size(Y, 2)
 
+    importance_list = Vector{Vector{Float64}}()
+    importancef_list = Vector{Vector{Float64}}()
+    sample_size = Int(round(1 * size(X, 1)))
+    
     # Parallelize tree growing
     tree_results = @distributed (vcat) for i in 1:forest.n_trees
-        sample_size = Int(round(1 * size(X, 1)))
-        boot_idx = sample(1:size(X, 1), sample_size, replace=true)
-        
+        boot_idx = sample(1:size(X, 1), sample_size, replace=false)  # Changed to replace=false to match non-parallel
         grow_dirichlet_tree(
             X[boot_idx, :],
             Y[boot_idx, :], 
@@ -180,7 +247,7 @@ function fit_dirichlet_forest_parallel!(forest::DirichletForest, X::Matrix{Float
         )
     end
 
-    # Aggregate results
+    # Aggregate results - match non-parallel version structure
     forest.trees = [result.tree for result in tree_results]
     importance_list = [result.importance for result in tree_results]
     importancef_list = [result.importancef for result in tree_results]
@@ -188,16 +255,72 @@ function fit_dirichlet_forest_parallel!(forest::DirichletForest, X::Matrix{Float
     forest.importancef_df = reduce(vcat, importancef_list')'
     forest.importance_df = reduce(vcat, importance_list')'
     
-    forest.importance = vec(mean(forest.importance_df, dims=1))
-    forest.importancef = vec(mean(forest.importancef_df, dims=1))
+    # Accumulate importance scores like non-parallel version
+    for tree_result in tree_results
+        forest.importance .+= tree_result.importance
+        forest.importancef .+= tree_result.importancef
+    end
+    
+    forest.importance ./= forest.n_trees
+    forest.importancef ./= forest.n_trees
 
     return forest
 end
 
+function predict_dirichlet_forest(forest::DirichletForest, X::Matrix{Float64})
+    n_samples = size(X, 1)
+    tree_preds = [predict_dirichlet_tree(tree, X) for tree in forest.trees]
 
+    avg_preds = zeros(n_samples, forest.n_categories)
 
-# Example usage and performance test
+    for i in 1:n_samples
+        sample_preds = zeros(length(forest.trees), forest.n_categories)
+        for (t, pred) in enumerate(tree_preds)
+            sample_preds[t, :] .= pred[i, :]
+        end
+        avg_preds[i, :] .= vec(mean(sample_preds, dims=1))
+    end
 
+    avg_preds ./= sum(avg_preds, dims=2)
+    return avg_preds
+end
 
-# Clean up workers
-rmprocs(workers())
+# Evaluation metrics
+function aitchison_distance(y_true::Matrix{Float64}, y_pred::Matrix{Float64})
+    n_samples = size(y_true, 1)
+    distances = zeros(n_samples)
+
+    for i in 1:n_samples
+        clr_true = log.(y_true[i, :]) .- mean(log.(y_true[i, :]))
+        clr_pred = log.(y_pred[i, :]) .- mean(log.(y_pred[i, :]))
+        distances[i] = sqrt(sum((clr_true .- clr_pred) .^ 2))
+    end
+
+    return mean(distances)
+end
+
+function compositional_r2(y_true::Matrix{Float64}, y_pred::Matrix{Float64})
+    clr_true = log.(y_true) .- mean(log.(y_true), dims=2)
+    clr_pred = log.(y_pred) .- mean(log.(y_pred), dims=2)
+
+    total_var = sum((clr_true .- mean(clr_true, dims=1)) .^ 2)
+    residual_var = sum((clr_true .- clr_pred) .^ 2)
+
+    return 1 - residual_var / total_var
+end
+
+function process_matrix_data(x_train, y_train, x_test)
+    # Convert to expected type
+    x_train = convert(Matrix{Float64}, x_train)
+    y_train = convert(Matrix{Float64}, y_train)
+    x_test = convert(Matrix{Float64}, x_test)
+    
+    return x_train, y_train, x_test
+end
+
+println("✅ All dependencies loaded successfully!")
+
+# Clean up workers function - call this when done
+function cleanup_workers()
+    rmprocs(workers())
+end
