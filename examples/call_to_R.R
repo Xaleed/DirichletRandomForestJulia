@@ -46,7 +46,7 @@ time_taken <- system.time({
     200000, 
     5,
     5,
-    estimate_parameters_mle_newton
+    estimate_parameters_mom #estimate_parameters_mle_newton
   )
   end')
 })
@@ -67,3 +67,4 @@ pred_test <- julia_eval('
 pred_train <- julia_eval('
     predict_dirichlet_forest(forest, x_train)
 ')
+
